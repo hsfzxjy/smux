@@ -562,6 +562,33 @@ func (c *blockWriteConn) Write(b []byte) (n int, err error) {
 	return c.Conn.Write(b)
 }
 
+func TestMaxIdleInterval(t *testing.T) {
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		ln.Accept()
+	}()
+
+	cli, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+	//when writeFrame block, keepalive in old version never timeout
+	blockWriteCli := &blockWriteConn{cli}
+
+	config := DefaultConfig()
+	config.MaxIdleInterval = 2 * time.Second
+	session, _ := Client(blockWriteCli, config)
+	time.Sleep(3 * time.Second)
+	if !session.IsClosed() {
+		t.Fatal("maxidle-timeout failed")
+	}
+}
+
 func TestKeepAliveBlockWriteTimeout(t *testing.T) {
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {

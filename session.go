@@ -74,6 +74,10 @@ type Session struct {
 
 	goAway int32 // flag id exhausted
 
+	// num of attempts to open a stream / stream accepted
+	// used for check idleness during an interval
+	streamAttempts uint32
+
 	deadline atomic.Value
 
 	shaper chan writeRequest // a shaper for writing
@@ -133,6 +137,7 @@ func (s *Session) OpenStream() (*Stream, error) {
 	s.nextStreamIDLock.Unlock()
 
 	stream := newStream(sid, s.config.MaxFrameSize, s)
+	atomic.AddUint32(&s.streamAttempts, 1)
 
 	if _, err := s.writeFrame(newFrame(byte(s.config.Version), cmdSYN, sid)); err != nil {
 		return nil, err
@@ -170,6 +175,7 @@ func (s *Session) AcceptStream() (*Stream, error) {
 
 	select {
 	case stream := <-s.chAccepts:
+		atomic.AddUint32(&s.streamAttempts, 1)
 		return stream, nil
 	case <-deadline:
 		return nil, ErrTimeout
@@ -385,13 +391,37 @@ func (s *Session) recvLoop() {
 func (s *Session) keepalive() {
 	tickerPing := time.NewTicker(s.config.KeepAliveInterval)
 	tickerTimeout := time.NewTicker(s.config.KeepAliveTimeout)
+	var idleTickerC <-chan time.Time
+	if s.config.MaxIdleInterval > 0 {
+		ticker := time.NewTicker(s.config.MaxIdleInterval)
+		defer ticker.Stop()
+		idleTickerC = ticker.C
+	} else {
+		ch := make(chan time.Time)
+		defer close(ch)
+		idleTickerC = ch
+	}
 	defer tickerPing.Stop()
 	defer tickerTimeout.Stop()
+	attempts := atomic.LoadUint32(&s.streamAttempts)
 	for {
 		select {
 		case <-tickerPing.C:
 			s.writeFrameInternal(newFrame(byte(s.config.Version), cmdNOP, 0), tickerPing.C, 0)
 			s.notifyBucket() // force a signal to the recvLoop
+		case <-idleTickerC:
+			curAttempts := atomic.LoadUint32(&s.streamAttempts)
+			if curAttempts == attempts && s.NumStreams() == 0 {
+				if !atomic.CompareAndSwapInt32(&s.dataReady, 1, 0) {
+					// recvLoop may block while bucket is 0, in this case,
+					// session should not be closed.
+					if atomic.LoadInt32(&s.bucket) > 0 {
+						s.Close()
+						return
+					}
+				}
+			}
+			attempts = curAttempts
 		case <-tickerTimeout.C:
 			if !atomic.CompareAndSwapInt32(&s.dataReady, 1, 0) {
 				// recvLoop may block while bucket is 0, in this case,

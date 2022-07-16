@@ -27,6 +27,10 @@ type Config struct {
 	// will be closed if no data has arrived
 	KeepAliveTimeout time.Duration
 
+	// MaxIdleInterval is how long the session
+	// will be closed if no new stream accepted/opened
+	MaxIdleInterval time.Duration
+
 	// MaxFrameSize is used to control the maximum
 	// frame size to sent to the remote
 	MaxFrameSize int
@@ -46,6 +50,7 @@ func DefaultConfig() *Config {
 		Version:           1,
 		KeepAliveInterval: 10 * time.Second,
 		KeepAliveTimeout:  30 * time.Second,
+		MaxIdleInterval:   3 * time.Minute,
 		MaxFrameSize:      32768,
 		MaxReceiveBuffer:  4194304,
 		MaxStreamBuffer:   65536,

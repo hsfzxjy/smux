@@ -582,6 +582,8 @@ func TestMaxIdleInterval(t *testing.T) {
 
 	config := DefaultConfig()
 	config.MaxIdleInterval = 2 * time.Second
+	config.KeepAliveInterval = time.Second
+	config.KeepAliveTimeout = 2 * time.Second
 	session, _ := Client(blockWriteCli, config)
 	time.Sleep(3 * time.Second)
 	if !session.IsClosed() {

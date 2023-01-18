@@ -129,7 +129,7 @@ func (s *Session) OpenStream() (*Stream, error) {
 
 	s.nextStreamID += 2
 	sid := s.nextStreamID
-	if sid == sid%2 { // stream-id overflows
+	if sid == sid%2 && s.NumStreams() != 0 { // stream-id overflows
 		s.goAway = 1
 		s.nextStreamIDLock.Unlock()
 		return nil, ErrGoAway

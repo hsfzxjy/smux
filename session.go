@@ -412,14 +412,8 @@ func (s *Session) keepalive() {
 		case <-idleTickerC:
 			curAttempts := atomic.LoadUint32(&s.streamAttempts)
 			if curAttempts == attempts && s.NumStreams() == 0 {
-				if !atomic.CompareAndSwapInt32(&s.dataReady, 1, 0) {
-					// recvLoop may block while bucket is 0, in this case,
-					// session should not be closed.
-					if atomic.LoadInt32(&s.bucket) > 0 {
-						s.Close()
-						return
-					}
-				}
+				s.Close()
+				return
 			}
 			attempts = curAttempts
 		case <-tickerTimeout.C:
